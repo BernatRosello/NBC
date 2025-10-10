@@ -1,5 +1,6 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 
 # Copyright 2020 Google LLC
 #
@@ -23,6 +24,35 @@ package_group(
         # Add partner to use Nearby Connections
     ],
 )
+
+cc_binary(
+    name = "core_dll",
+    srcs = [
+        "core.cc",
+        "core.h",
+        # ... list public headers needed
+    ],
+    copts = ["-DCORE_ADAPTER_DLL"],
+    deps = [
+        ":core_types",
+        "//connections/implementation:internal",
+        "//connections/v3:v3_types",
+        "//internal/analytics:event_logger",
+        "//internal/interop:device",
+        "//internal/platform:base",
+        "//internal/platform:types",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
+    ],
+    linkshared = True,  # <- produces a shared library (.dll on Windows)
+    linkstatic = True,
+    linkopts = select({
+        "@bazel_tools//src/conditions:windows": [],
+        "//conditions:default": ["-Wl,-soname,core_dll.dll"],
+    }),
+)
+
 
 cc_library(
     name = "core",

@@ -10,6 +10,19 @@ bazel_dep(name = "protobuf", version = "32.0", repo_name = "com_google_protobuf"
 bazel_dep(name = "googletest", version = "1.17.0", repo_name = "com_google_googletest")
 bazel_dep(name = "boringssl", version = "0.0.0-20240126-22d349c")
 
+register_toolchains("//toolchains:clang_windows_toolchain_impl")
+
+# Hedron's Compile Commands Extractor for Bazel
+# https://github.com/hedronvision/bazel-compile-commands-extractor
+bazel_dep(name = "hedron_compile_commands", version = "1.4.0")
+git_override(
+    module_name = "hedron_compile_commands",
+    commit = "0e990032f3c5a866e72615cf67e5ce22186dcb97",
+    remote = "https://github.com/hedronvision/bazel-compile-commands-extractor.git",
+    # Replace the commit hash (above) with the latest (https://github.com/hedronvision/bazel-compile-commands-extractor/commits/main).
+    # Even better, set up Renovate and let it do the work for you (see "Suggestion: Updates" in the README).
+)
+
 git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 
 git_repository(
