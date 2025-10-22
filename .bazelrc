@@ -1,4 +1,24 @@
-build --action_env=BAZEL_CXXOPTS=-"std=c++20"
+# ==========================
+# Default (Linux host build)
+# ==========================
+#build --action_env=CC=/usr/bin/clang
+#build --action_env=CXX=/usr/bin/clang++
+#build --cxxopt=-std=c++20
+#build --cxxopt=-stdlib=libc++
+#build --linkopt=-stdlib=libc++
+
+# ==========================
+# Windows DLL Target (Linux HOST)
+# ==========================
+build --action_env=CC=x86_64-w64-mingw32-gcc
+build --action_env=CXX=x86_64-w64-mingw32-gcc
+build --cxxopt=-std=c++2a
+
+
+build -s --check_visibility=false --spawn_strategy=standalone
+build --verbose_failures
+
 # Definition of --config=memcheck
 build:memcheck --strip=never --test_timeout=3600
 common --enable_bzlmod
+build --toolchain_resolution_debug='@bazel_tools//tools/cpp:toolchain_type'
