@@ -12,14 +12,14 @@ build --verbose_failures
 # ==========================
 # Windows cross-compilation
 # ==========================
-build:windows --platforms=//toolchains:windows_x64
-build:windows --cpu=x64_windows
-build:windows --compiler=clang
-build:windows --crosstool_top=@llvm_toolchain//:toolchain
-build:windows --cxxopt=-std=c++20
-build:windows --cxxopt=-stdlib=libc++
-build:windows --features=no_pic
-build:windows --host_cxxopt=-std=c++17
+# build:windows --platforms=//toolchains:windows_x64
+# build:windows --cpu=x64_windows
+# build:windows --compiler=clang
+# build:windows --crosstool_top=@llvm_toolchain//:toolchain
+# build:windows --cxxopt=-std=c++20
+# build:windows --cxxopt=-stdlib=libc++
+# build:windows --features=no_pic
+# build:windows --host_cxxopt=-std=c++17
 
 
 # Definition of --config=memcheck
