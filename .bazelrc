@@ -1,13 +1,13 @@
 # ==========================
 # Default (Linux host build)
 # ==========================
-build --action_env=CC=/usr/bin/clang
-build --action_env=CXX=/usr/bin/clang++
-build --cxxopt=-stdlib=libc++
-build --linkopt=-stdlib=libc++
+#build --action_env=CC=/usr/bin/clang
+#build --action_env=CXX=/usr/bin/clang++
+#build --cxxopt=-stdlib=libc++
+#build --linkopt=-stdlib=libc++
 build --cxxopt=-std=c++20
-build -s --check_visibility=false --spawn_strategy=standalone
-build --verbose_failures
+build --check_visibility=false --spawn_strategy=standalone
+#build -s --verbose_failures
 
 # ==========================
 # Windows cross-compilation
@@ -20,6 +20,14 @@ build --verbose_failures
 # build:windows --cxxopt=-stdlib=libc++
 # build:windows --features=no_pic
 # build:windows --host_cxxopt=-std=c++17
+
+# ==========================
+# Android cross-compilation
+# ==========================
+build:arm64_v8a --platforms=//:aarm64
+build:x86_64 --platforms=//:ax86_64
+build:armeabi_v7a --platforms=//:aarmv7
+build:x86 --platforms=//:ax86_32
 
 
 # Definition of --config=memcheck

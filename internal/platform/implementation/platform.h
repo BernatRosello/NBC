@@ -42,9 +42,9 @@
 #include "internal/platform/implementation/submittable_executor.h"
 #include "internal/platform/implementation/system_clock.h"
 #include "internal/platform/implementation/timer.h"
-#ifndef NO_WEBRTC
-#include "internal/platform/implementation/webrtc.h"
-#endif
+// #ifndef NO_WEBRTC
+// #include "internal/platform/implementation/webrtc.h"
+// #endif
 #ifndef NEARBY_CHROMIUM
 #include "internal/platform/implementation/preferences_manager.h"
 #endif
@@ -138,9 +138,9 @@ class ImplementationPlatform {
   static std::unique_ptr<WifiDirectMedium> CreateWifiDirectMedium();
   static std::unique_ptr<Timer> CreateTimer();
   static std::unique_ptr<DeviceInfo> CreateDeviceInfo();
-#ifndef NO_WEBRTC
-  static std::unique_ptr<WebRtcMedium> CreateWebRtcMedium();
-#endif
+// #ifndef NO_WEBRTC
+// static std::unique_ptr<WebRtcMedium> CreateWebRtcMedium();
+// #endif
 
   // Gets HTTP response from remote server.
   //

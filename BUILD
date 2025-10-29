@@ -16,3 +16,45 @@ refresh_compile_commands(
       # As are additional targets (+) and subtractions (-), like in bazel query https://docs.bazel.build/versions/main/query.html#expressions
     # And if you're working on a header-only library, specify a test or binary target that compiles it.
 )
+
+
+#   CPU Value       Platform
+# armeabi-v7a     @platforms//cpu:armv7
+# arm64-v8a       @platforms//cpu:arm64
+# x86             @platforms//cpu:x86_32
+# x86_64          @platforms//cpu:x86_64
+platform(
+    name = "aarmv7",
+    visibility = ["//visibility:public"],
+    constraint_values = [
+        "@platforms//os:android",
+        "@platforms//cpu:armv7",
+    ],
+)
+
+platform(
+    name = "aarm64",
+    visibility = ["//visibility:public"],
+    constraint_values = [
+        "@platforms//os:android",
+        "@platforms//cpu:arm64",
+    ],
+)
+
+platform(
+    name = "ax86_32",
+    visibility = ["//visibility:public"],
+    constraint_values = [
+        "@platforms//os:android",
+        "@platforms//cpu:x86_32",
+    ],
+)
+
+platform(
+    name = "ax86_64",
+    visibility = ["//visibility:public"],
+    constraint_values = [
+        "@platforms//os:android",
+        "@platforms//cpu:x86_64",
+    ],
+)
