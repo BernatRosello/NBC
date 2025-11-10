@@ -9,7 +9,7 @@ TARGET="//connections/unity:nc_unity"
 OUT="unity_plugins"
 
 # List of .bazelrc configs (must match the build:<name> labels in .bazelrc)
-ABIS=("arm64_v8a" "x86_64" "armeabi_v7a" "x86")
+ABIS=("arm64-v8a" "x86_64" "armeabi-v7a" "x86")
 
 echo "🚀 Building all Android ABIs for target: $TARGET"
 echo "Output root: $OUT"
@@ -44,6 +44,8 @@ for abi in "${ABIS[@]}"; do
     if [[ -n "$A_FILE" ]]; then
         cp "$A_FILE" "$ABI_OUT/"
         echo "✅ Copied $A_FILE → $ABI_OUT/"
+    else
+        echo "⚠️  No .a file found for $abi"
     fi
 
     echo

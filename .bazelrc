@@ -24,9 +24,9 @@ build --check_visibility=false --spawn_strategy=standalone
 # ==========================
 # Android cross-compilation
 # ==========================
-build:arm64_v8a --platforms=//:aarm64
+build:arm64-v8a --platforms=//:aarm64
 build:x86_64 --platforms=//:ax86_64
-build:armeabi_v7a --platforms=//:aarmv7
+build:armeabi-v7a --platforms=//:aarmv7
 build:x86 --platforms=//:ax86_32
 
 
