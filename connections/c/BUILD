@@ -72,6 +72,7 @@ cc_library(
         ],
         "//conditions:default": [],
     }),
+    linkstatic = True,
 )
 
 # iOS only.

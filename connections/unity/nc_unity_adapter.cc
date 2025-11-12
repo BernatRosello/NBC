@@ -1,5 +1,7 @@
 #include "nc_unity_adapter.h"
 
+#include "connections/c/nc.h"
+
 #include <iostream>
 #include <string>
 #include <mutex>
@@ -9,21 +11,21 @@ static NC_INSTANCE g_instance = nullptr;
 static std::mutex g_lock;
 
 // -- Unity callbacks --
-static OnPeerFoundCallback g_onPeerFound = nullptr;
-static OnPeerLostCallback g_onPeerLost = nullptr;
-static OnConnectionRequestedCallback g_onConnectionRequested = nullptr;
-static OnConnectionEstablishedCallback g_onConnectionEstablished = nullptr;
-static OnConnectionDisconnectedCallback g_onConnectionDisconnected = nullptr;
-static OnDataReceivedCallback g_onDataReceived = nullptr;
-static OnPayloadProgressCallback g_onPayloadProgress = nullptr;
+static OnPeerFound_cb g_onPeerFound = nullptr;
+static OnPeerLost_cb g_onPeerLost = nullptr;
+static OnConnectionRequested_cb g_onConnectionRequested = nullptr;
+static OnConnectionEstablished_cb g_onConnectionEstablished = nullptr;
+static OnConnectionDisconnected_cb g_onConnectionDisconnected = nullptr;
+static OnDataReceived_cb g_onDataReceived = nullptr;
+static OnPayloadProgress_cb g_onPayloadProgress = nullptr;
 
-void NBC_SetOnPeerFound(OnPeerFoundCallback cb) { g_onPeerFound = cb; }
-void NBC_SetOnPeerLost(OnPeerLostCallback cb) { g_onPeerLost = cb; }
-void NBC_SetOnConnectionRequested(OnConnectionRequestedCallback cb) { g_onConnectionRequested = cb; }
-void NBC_SetOnConnectionEstablished(OnConnectionEstablishedCallback cb) { g_onConnectionEstablished = cb; }
-void NBC_SetOnConnectionDisconnected(OnConnectionDisconnectedCallback cb) { g_onConnectionDisconnected = cb; }
-void NBC_SetOnDataReceived(OnDataReceivedCallback cb) { g_onDataReceived = cb; }
-void NBC_SetOnPayloadProgress(OnPayloadProgressCallback cb) { g_onPayloadProgress = cb; }
+void NBC_SetOnPeerFound(OnPeerFound_cb cb) { g_onPeerFound = cb; }
+void NBC_SetOnPeerLost(OnPeerLost_cb cb) { g_onPeerLost = cb; }
+void NBC_SetOnConnectionRequested(OnConnectionRequested_cb cb) { g_onConnectionRequested = cb; }
+void NBC_SetOnConnectionEstablished(OnConnectionEstablished_cb cb) { g_onConnectionEstablished = cb; }
+void NBC_SetOnConnectionDisconnected(OnConnectionDisconnected_cb cb) { g_onConnectionDisconnected = cb; }
+void NBC_SetOnDataReceived(OnDataReceived_cb cb) { g_onDataReceived = cb; }
+void NBC_SetOnPayloadProgress(OnPayloadProgress_cb cb) { g_onPayloadProgress = cb; }
 
 NBC_EXPORT void NBC_Initialize(const char* serviceId) {
     std::lock_guard<std::mutex> guard(g_lock);
