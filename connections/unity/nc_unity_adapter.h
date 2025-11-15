@@ -40,6 +40,7 @@ NBC_EXPORT void NBC_StartDiscovery(void);
 NBC_EXPORT void NBC_StopDiscovery(void);
 
 // Messaging / Connection control
+NBC_EXPORT void NBC_SendConnectionRequest(int endpoint_id);
 NBC_EXPORT void NBC_SendBytes(int endpoint_id, const void* data, int len);
 NBC_EXPORT void NBC_AcceptConnection(int endpoint_id);
 NBC_EXPORT void NBC_RejectConnection(int endpoint_id);

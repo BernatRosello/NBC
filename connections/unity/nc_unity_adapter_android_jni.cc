@@ -174,10 +174,10 @@ NBC_EXPORT void NBC_SetOnDataReceived(OnDataReceived_cb cb)
 
 void NBC_SetOnPayloadProgress(OnPayloadProgress_cb cb) { g_onPayloadProgress.store(cb); }
 
-// Initialize: call Java initialize(serviceId)
-NBC_EXPORT void NBC_Initialize(const char *serviceId)
+// Initialize: call Java initialize(endpointName, serviceId)
+NBC_EXPORT void NBC_Initialize(const char *endpointName, const char *serviceId)
 {
-    CallJava_void_StringArg("initialize", serviceId ? serviceId : "");
+    CallJava_void_StringArg("initialize", endpointName ? endpointName : "" ? serviceId : "");
 }
 
 // Shutdown
@@ -190,7 +190,7 @@ NBC_EXPORT void NBC_Shutdown()
 NBC_EXPORT void NBC_StartAdvertising()
 {
     // You may want to pass endpoint name; using fixed "UnityPeer" here, or adapt to pass nickname.
-    CallJava_void_StringString("startAdvertising", "UnityPeer", "unity-nc");
+    CallJava_void_StringString("startAdvertising");
 }
 NBC_EXPORT void NBC_StopAdvertising()
 {
@@ -198,7 +198,7 @@ NBC_EXPORT void NBC_StopAdvertising()
 }
 NBC_EXPORT void NBC_StartDiscovery()
 {
-    CallJava_void_StringArg("startDiscovery", "unity-nc");
+    CallJava_void_StringArg("startDiscovery");
 }
 NBC_EXPORT void NBC_StopDiscovery()
 {
