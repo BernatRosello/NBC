@@ -13,18 +13,18 @@ static std::mutex g_lock;
 // -- Unity callbacks --
 static OnPeerFound_cb g_onPeerFound = nullptr;
 static OnPeerLost_cb g_onPeerLost = nullptr;
-static OnConnectionRequested_cb g_onConnectionRequested = nullptr;
+static OnConnectionInitiated_cb g_onConnectionRequested = nullptr;
 static OnConnectionEstablished_cb g_onConnectionEstablished = nullptr;
 static OnConnectionDisconnected_cb g_onConnectionDisconnected = nullptr;
-static OnDataReceived_cb g_onDataReceived = nullptr;
+static OnPayloadReceived_cb g_onDataReceived = nullptr;
 static OnPayloadProgress_cb g_onPayloadProgress = nullptr;
 
 void NBC_SetOnPeerFound(OnPeerFound_cb cb) { g_onPeerFound = cb; }
 void NBC_SetOnPeerLost(OnPeerLost_cb cb) { g_onPeerLost = cb; }
-void NBC_SetOnConnectionRequested(OnConnectionRequested_cb cb) { g_onConnectionRequested = cb; }
+void NBC_SetOnConnectionRequested(OnConnectionInitiated_cb cb) { g_onConnectionRequested = cb; }
 void NBC_SetOnConnectionEstablished(OnConnectionEstablished_cb cb) { g_onConnectionEstablished = cb; }
 void NBC_SetOnConnectionDisconnected(OnConnectionDisconnected_cb cb) { g_onConnectionDisconnected = cb; }
-void NBC_SetOnDataReceived(OnDataReceived_cb cb) { g_onDataReceived = cb; }
+void NBC_SetOnDataReceived(OnPayloadReceived_cb cb) { g_onDataReceived = cb; }
 void NBC_SetOnPayloadProgress(OnPayloadProgress_cb cb) { g_onPayloadProgress = cb; }
 
 NBC_EXPORT void NBC_Initialize(const char* serviceId) {

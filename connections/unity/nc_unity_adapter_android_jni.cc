@@ -1,318 +1,286 @@
-// jni_nc_unity.cpp
-// Build for Android (ABI-specific). Exports C API for Unity and JNI callbacks for Java.
-
-#include "connections/unity/nc_unity_adapter.h"
-
 #include <jni.h>
-#include <string>
-#include <mutex>
-#include <vector>
 #include <atomic>
+#include <string>
 #include <cstring>
-#include <cassert>
 
-static JavaVM *g_jvm = nullptr;
-static jclass g_nearbyBridgeClass = nullptr;
-static std::mutex g_class_lock;
+#include "nc_unity_adapter.h"
 
-// use the shared typedef names from the header
-static std::atomic<OnPeerFound_cb> g_onPeerFound{nullptr};
-static std::atomic<OnPeerLost_cb> g_onPeerLost{nullptr};
-static std::atomic<OnConnectionRequested_cb> g_onConnectionRequested{nullptr};
-static std::atomic<OnConnectionEstablished_cb> g_onConnectionEstablished{nullptr};
-static std::atomic<OnConnectionDisconnected_cb> g_onConnectionDisconnected{nullptr};
-static std::atomic<OnDataReceived_cb> g_onDataReceived{nullptr};
-static std::atomic<OnPayloadProgress_cb> g_onPayloadProgress{nullptr};
+static JavaVM* g_vm = nullptr;
+static jclass g_cls = nullptr;
 
-// -------------------- helpers --------------------
-static JNIEnv *GetJNIEnv(bool attach_if_needed = true)
-{
-    if (!g_jvm)
-        return nullptr;
-    JNIEnv *env = nullptr;
-    jint rc = g_jvm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6);
-    if (rc == JNI_OK)
-        return env;
-    if (attach_if_needed)
-    {
-        JavaVMAttachArgs args;
-        args.version = JNI_VERSION_1_6;
-        args.name = nullptr;
-        args.group = nullptr;
-        if (g_jvm->AttachCurrentThread(&env, &args) != JNI_OK)
-        {
-            return nullptr;
-        }
-        return env;
-    }
-    return nullptr;
+static jmethodID g_m_initialize      = nullptr;
+static jmethodID g_m_shutdown        = nullptr;
+static jmethodID g_m_startDiscovery  = nullptr;
+static jmethodID g_m_stopDiscovery   = nullptr;
+static jmethodID g_m_startAdvertising= nullptr;
+static jmethodID g_m_stopAdvertising = nullptr;
+static jmethodID g_m_requestConn     = nullptr;
+static jmethodID g_m_sendBytes       = nullptr;
+static jmethodID g_m_acceptConn      = nullptr;
+static jmethodID g_m_rejectConn      = nullptr;
+static jmethodID g_m_disconnect      = nullptr;
+
+// ---------------- Atomics for callbacks ----------------
+static std::atomic<OnPeerFound_cb>                cb_peerFound{nullptr};
+static std::atomic<OnPeerLost_cb>                 cb_peerLost{nullptr};
+static std::atomic<OnConnectionInitiated_cb>      cb_connInit{nullptr};
+static std::atomic<OnConnectionEstablished_cb>    cb_connOk{nullptr};
+static std::atomic<OnConnectionDisconnected_cb>   cb_connDisc{nullptr};
+static std::atomic<OnPayloadReceived_cb>          cb_payload{nullptr};
+
+
+// ---------------- Helpers ----------------
+static JNIEnv* GetEnv() {
+    JNIEnv* env = nullptr;
+    if (g_vm->GetEnv((void**)&env, JNI_VERSION_1_6) != JNI_OK)
+        g_vm->AttachCurrentThread(&env, nullptr);
+    return env;
 }
 
-static void DetachCurrentThreadIfAttached()
-{
-    // no-op: we leave threads attached. If you attach manually, detach in cleanup if needed.
+static jstring toJString(JNIEnv* env, const char* s) {
+    return s ? env->NewStringUTF(s) : nullptr;
 }
 
-// Find and cache NearbyBridge class
-static bool EnsureNearbyBridgeClass(JNIEnv *env)
-{
-    std::lock_guard<std::mutex> lock(g_class_lock);
-    if (g_nearbyBridgeClass)
-        return true;
+// ---------------- Cached class + methods ----------------
+static void CacheJNI(JNIEnv* env) {
     jclass local = env->FindClass("com/bernatrosello/nearbybridge/NearbyBridge");
-    if (!local)
-        return false;
-    g_nearbyBridgeClass = (jclass)env->NewGlobalRef(local);
+    g_cls = (jclass)env->NewGlobalRef(local);
     env->DeleteLocalRef(local);
-    return g_nearbyBridgeClass != nullptr;
+
+    g_m_initialize       = env->GetStaticMethodID(g_cls, "initialize", "()V");
+    g_m_shutdown         = env->GetStaticMethodID(g_cls, "shutdown", "()V");
+    g_m_startDiscovery   = env->GetStaticMethodID(g_cls, "startDiscovery", "(Ljava/lang/String;ZI)V");
+    g_m_stopDiscovery    = env->GetStaticMethodID(g_cls, "stopDiscovery", "()V");
+    g_m_startAdvertising = env->GetStaticMethodID(g_cls, "startAdvertising", "(Ljava/lang/String;Ljava/lang/String;IZI)V");
+    g_m_stopAdvertising  = env->GetStaticMethodID(g_cls, "stopAdvertising", "()V");
+    g_m_requestConn      = env->GetStaticMethodID(g_cls, "requestConnection", "(Ljava/lang/String;Ljava/lang/String;)V");
+    g_m_sendBytes        = env->GetStaticMethodID(g_cls, "sendBytes", "(Ljava/lang/String;[B)V");
+    g_m_acceptConn       = env->GetStaticMethodID(g_cls, "acceptConnection", "(Ljava/lang/String;)V");
+    g_m_rejectConn       = env->GetStaticMethodID(g_cls, "rejectConnection", "(Ljava/lang/String;)V");
+    g_m_disconnect       = env->GetStaticMethodID(g_cls, "disconnect", "(Ljava/lang/String;)V");
 }
 
-static jmethodID GetStaticMethod(JNIEnv *env, const char *name, const char *sig)
-{
-    if (!EnsureNearbyBridgeClass(env))
-        return nullptr;
-    return env->GetStaticMethodID(g_nearbyBridgeClass, name, sig);
-}
-
-// Call Java static methods wrappers used by our exported C functions
-static bool CallJava_void_StringArg(const char *methodName, const char *arg)
-{
-    JNIEnv *env = GetJNIEnv();
-    if (!env)
-        return false;
-    jmethodID mid = GetStaticMethod(env, methodName, "(Ljava/lang/String;)V");
-    if (!mid)
-        return false;
-    jstring jarg = env->NewStringUTF(arg ? arg : "");
-    env->CallStaticVoidMethod(g_nearbyBridgeClass, mid, jarg);
-    env->DeleteLocalRef(jarg);
-    return true;
-}
-
-static bool CallJava_void_NoArgs(const char *methodName)
-{
-    JNIEnv *env = GetJNIEnv();
-    if (!env)
-        return false;
-    jmethodID mid = GetStaticMethod(env, methodName, "()V");
-    if (!mid)
-        return false;
-    env->CallStaticVoidMethod(g_nearbyBridgeClass, mid);
-    return true;
-}
-
-static bool CallJava_void_StringString(const char *methodName, const char *a, const char *b)
-{
-    JNIEnv *env = GetJNIEnv();
-    if (!env)
-        return false;
-    jmethodID mid = GetStaticMethod(env, methodName, "(Ljava/lang/String;Ljava/lang/String;)V");
-    if (!mid)
-        return false;
-    jstring ja = env->NewStringUTF(a ? a : "");
-    jstring jb = env->NewStringUTF(b ? b : "");
-    env->CallStaticVoidMethod(g_nearbyBridgeClass, mid, ja, jb);
-    env->DeleteLocalRef(ja);
-    env->DeleteLocalRef(jb);
-    return true;
-}
-
-static bool CallJava_void_Int(const char *methodName, int value)
-{
-    JNIEnv *env = GetJNIEnv();
-    if (!env)
-        return false;
-    jmethodID mid = GetStaticMethod(env, methodName, "(I)V");
-    if (!mid)
-        return false;
-    env->CallStaticVoidMethod(g_nearbyBridgeClass, mid, value);
-    return true;
-}
-
-static bool CallJava_void_Int_ByteArray(const char *methodName, int endpointId, const void *data, int len)
-{
-    JNIEnv *env = GetJNIEnv();
-    if (!env)
-        return false;
-    jmethodID mid = GetStaticMethod(env, methodName, "(I[B)V");
-    if (!mid)
-        return false;
-    jbyteArray arr = env->NewByteArray(len);
-    env->SetByteArrayRegion(arr, 0, len, reinterpret_cast<const jbyte *>(data));
-    env->CallStaticVoidMethod(g_nearbyBridgeClass, mid, endpointId, arr);
-    env->DeleteLocalRef(arr);
-    return true;
-}
-
-// -------------------- exported C API (P/Invoke) --------------------
-// These names must match the DllImport signatures in your C# exactly.
-
-NBC_EXPORT void NBC_SetOnPeerFound(OnPeerFound_cb cb)
-{
-    g_onPeerFound.store(cb);
-}
-NBC_EXPORT void NBC_SetOnPeerLost(OnPeerLost_cb cb)
-{
-    g_onPeerLost.store(cb);
-}
-NBC_EXPORT void NBC_SetOnConnectionRequested(OnConnectionRequested_cb cb)
-{
-    g_onConnectionRequested.store(cb);
-}
-NBC_EXPORT void NBC_SetOnConnectionEstablished(OnConnectionEstablished_cb cb)
-{
-    g_onConnectionEstablished.store(cb);
-}
-NBC_EXPORT void NBC_SetOnConnectionDisconnected(OnConnectionDisconnected_cb cb)
-{
-    g_onConnectionDisconnected.store(cb);
-}
-NBC_EXPORT void NBC_SetOnDataReceived(OnDataReceived_cb cb)
-{
-    g_onDataReceived.store(cb);
-}
-
-void NBC_SetOnPayloadProgress(OnPayloadProgress_cb cb) { g_onPayloadProgress.store(cb); }
-
-// Initialize: call Java initialize(endpointName, serviceId)
-NBC_EXPORT void NBC_Initialize(const char *endpointName, const char *serviceId)
-{
-    CallJava_void_StringArg("initialize", endpointName ? endpointName : "" ? serviceId : "");
-}
-
-// Shutdown
-NBC_EXPORT void NBC_Shutdown()
-{
-    CallJava_void_NoArgs("shutdown");
-}
-
-// Advertising / discovery
-NBC_EXPORT void NBC_StartAdvertising()
-{
-    // You may want to pass endpoint name; using fixed "UnityPeer" here, or adapt to pass nickname.
-    CallJava_void_StringString("startAdvertising");
-}
-NBC_EXPORT void NBC_StopAdvertising()
-{
-    CallJava_void_NoArgs("stopAdvertising");
-}
-NBC_EXPORT void NBC_StartDiscovery()
-{
-    CallJava_void_StringArg("startDiscovery");
-}
-NBC_EXPORT void NBC_StopDiscovery()
-{
-    CallJava_void_NoArgs("stopDiscovery");
-}
-
-// Connection operations
-NBC_EXPORT void NBC_AcceptConnection(int endpointId)
-{
-    CallJava_void_Int("acceptConnection", endpointId);
-}
-NBC_EXPORT void NBC_RejectConnection(int endpointId)
-{
-    CallJava_void_Int("rejectConnection", endpointId);
-}
-NBC_EXPORT void NBC_Disconnect(int endpointId)
-{
-    CallJava_void_Int("disconnect", endpointId);
-}
-
-// Send bytes
-NBC_EXPORT void NBC_SendBytes(int endpointId, const void *data, int len)
-{
-    CallJava_void_Int_ByteArray("sendBytes", endpointId, data, len);
-}
-
-// -------------------- JNI callbacks from Java -> native --------------------
-// Java will call these when events happen. Naming must match Java package/class/method or use RegisterNatives.
-
-extern "C"
-{
-
-    // Java_com_bernatrosello_nearbybridge_NearbyBridge_nativeOnPeerFound
-    JNIEXPORT void JNICALL
-    Java_com_bernatrosello_nearbybridge_NearbyBridge_nativeOnPeerFound(JNIEnv *env, jclass,
-                                                                       jint endpointId, jstring name)
-    {
-        OnPeerFound_cb cb = g_onPeerFound.load();
-        if (!cb)
-            return;
-        const char *s = env->GetStringUTFChars(name, nullptr);
-        cb((int)endpointId, s);
-        env->ReleaseStringUTFChars(name, s);
-    }
-
-    JNIEXPORT void JNICALL
-    Java_com_bernatrosello_nearbybridge_NearbyBridge_nativeOnPeerLost(JNIEnv *env, jclass,
-                                                                      jint endpointId)
-    {
-        OnPeerLost_cb cb = g_onPeerLost.load();
-        if (cb)
-            cb((int)endpointId);
-    }
-
-    JNIEXPORT void JNICALL
-    Java_com_bernatrosello_nearbybridge_NearbyBridge_nativeOnConnectionRequested(JNIEnv *env, jclass,
-                                                                                 jint endpointId, jstring name)
-    {
-        OnConnectionRequested_cb cb = g_onConnectionRequested.load();
-        if (!cb)
-            return;
-        const char *s = env->GetStringUTFChars(name, nullptr);
-        cb((int)endpointId, s);
-        env->ReleaseStringUTFChars(name, s);
-    }
-
-    JNIEXPORT void JNICALL
-    Java_com_bernatrosello_nearbybridge_NearbyBridge_nativeOnConnectionEstablished(JNIEnv *env, jclass,
-                                                                                   jint endpointId)
-    {
-        OnConnectionEstablished_cb cb = g_onConnectionEstablished.load();
-        if (cb)
-            cb((int)endpointId);
-    }
-
-    JNIEXPORT void JNICALL
-    Java_com_bernatrosello_nearbybridge_NearbyBridge_nativeOnConnectionDisconnected(JNIEnv *env, jclass,
-                                                                                    jint endpointId)
-    {
-        OnConnectionDisconnected_cb cb = g_onConnectionDisconnected.load();
-        if (cb)
-            cb((int)endpointId);
-    }
-
-    JNIEXPORT void JNICALL
-    Java_com_bernatrosello_nearbybridge_NearbyBridge_nativeOnDataReceived(JNIEnv *env, jclass,
-                                                                          jint endpointId, jbyteArray data)
-    {
-        OnDataReceived_cb cb = g_onDataReceived.load();
-        if (!cb)
-            return;
-        jsize len = env->GetArrayLength(data);
-        jbyte *buf = env->GetByteArrayElements(data, nullptr);
-        cb((int)endpointId, buf, (int)len);
-        env->ReleaseByteArrayElements(data, buf, JNI_ABORT);
-    }
-
-} // extern "C"
-
-// -------------------- JNI_OnLoad to cache JavaVM --------------------
-JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved)
-{
-    g_jvm = vm;
-    JNIEnv *env = nullptr;
-    if (g_jvm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6) != JNI_OK)
-    {
-        return JNI_ERR;
-    }
-    // Try to cache class reference if present (may not yet be loaded)
-    jclass local = env->FindClass("com/bernatrosello/nearbybridge/NearbyBridge");
-    if (local)
-    {
-        g_nearbyBridgeClass = (jclass)env->NewGlobalRef(local);
-        env->DeleteLocalRef(local);
-    }
+// ----------------------------------------
+// JNI OnLoad
+// ----------------------------------------
+JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*) {
+    g_vm = vm;
+    JNIEnv* env = GetEnv();
+    CacheJNI(env);
     return JNI_VERSION_1_6;
 }
+
+// ----------------------------------------
+// Native callbacks called from Java
+// ----------------------------------------
+extern "C" JNIEXPORT void JNICALL
+Java_com_bernatrosello_nearbybridge_NearbyBridge_nativeOnPeerFound(
+        JNIEnv* env, jclass,
+        jstring endpointId, jstring name)
+{
+    auto cb = cb_peerFound.load();
+    if (!cb) return;
+
+    const char* id  = env->GetStringUTFChars(endpointId, nullptr);
+    const char* nm  = env->GetStringUTFChars(name, nullptr);
+
+    cb(id, nm);
+
+    env->ReleaseStringUTFChars(endpointId, id);
+    env->ReleaseStringUTFChars(name, nm);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_bernatrosello_nearbybridge_NearbyBridge_nativeOnPeerLost(
+        JNIEnv* env, jclass,
+        jstring endpointId)
+{
+    auto cb = cb_peerLost.load();
+    if (!cb) return;
+
+    const char* id = env->GetStringUTFChars(endpointId, nullptr);
+    cb(id);
+    env->ReleaseStringUTFChars(endpointId, id);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_bernatrosello_nearbybridge_NearbyBridge_nativeOnConnectionInitiated(
+        JNIEnv* env, jclass,
+        jstring endpointId, jstring name, jstring authDigits, jint authStatus)
+{
+    auto cb = cb_connInit.load();
+    if (!cb) return;
+
+    const char* id   = env->GetStringUTFChars(endpointId, nullptr);
+    const char* nm   = env->GetStringUTFChars(name, nullptr);
+    const char* auth = env->GetStringUTFChars(authDigits, nullptr);
+
+    cb(id, nm, auth, authStatus);
+
+    env->ReleaseStringUTFChars(endpointId, id);
+    env->ReleaseStringUTFChars(name, nm);
+    env->ReleaseStringUTFChars(authDigits, auth);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_bernatrosello_nearbybridge_NearbyBridge_nativeOnConnectionEstablished(
+        JNIEnv* env, jclass, jstring endpointId)
+{
+    auto cb = cb_connOk.load();
+    if (!cb) return;
+
+    const char* id = env->GetStringUTFChars(endpointId, nullptr);
+    cb(id);
+    env->ReleaseStringUTFChars(endpointId, id);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_bernatrosello_nearbybridge_NearbyBridge_nativeOnConnectionDisconnected(
+        JNIEnv* env, jclass, jstring endpointId)
+{
+    auto cb = cb_connDisc.load();
+    if (!cb) return;
+
+    const char* id = env->GetStringUTFChars(endpointId, nullptr);
+    cb(id);
+    env->ReleaseStringUTFChars(endpointId, id);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_bernatrosello_nearbybridge_NearbyBridge_nativeOnDataReceived(
+        JNIEnv* env, jclass, jstring endpointId, jbyteArray data)
+{
+    auto cb = cb_payload.load();
+    if (!cb) return;
+
+    const char* id = env->GetStringUTFChars(endpointId, nullptr);
+    jsize len = env->GetArrayLength(data);
+    jbyte* ptr = env->GetByteArrayElements(data, nullptr);
+
+    cb(id, reinterpret_cast<uint8_t*>(ptr), (size_t)len);
+
+    env->ReleaseStringUTFChars(endpointId, id);
+    env->ReleaseByteArrayElements(data, ptr, JNI_ABORT);
+}
+
+
+// ----------------------------------------
+// C API forwarding to Java
+// ----------------------------------------
+extern "C" {
+
+NBC_EXPORT void NBC_Initialize(void) {
+    JNIEnv* env = GetEnv();
+    env->CallStaticVoidMethod(g_cls, g_m_initialize);
+}
+
+NBC_EXPORT void NBC_Shutdown(void) {
+    JNIEnv* env = GetEnv();
+    env->CallStaticVoidMethod(g_cls, g_m_shutdown);
+}
+
+NBC_EXPORT void NBC_StartAdvertising(const char* endpointname, const char* serviceId,
+                                     int connectionType, bool lowPower, int strategy)
+{
+    JNIEnv* env = GetEnv();
+    jstring jname = toJString(env, endpointname);
+    jstring jsid  = toJString(env, serviceId);
+
+    env->CallStaticVoidMethod(g_cls, g_m_startAdvertising,
+            jname, jsid, connectionType, (jboolean)lowPower, strategy);
+
+    env->DeleteLocalRef(jname);
+    env->DeleteLocalRef(jsid);
+}
+
+NBC_EXPORT void NBC_StopAdvertising(void) {
+    GetEnv()->CallStaticVoidMethod(g_cls, g_m_stopAdvertising);
+}
+
+NBC_EXPORT void NBC_StartDiscovery(const char* serviceId, bool lowPower, int strategy)
+{
+    JNIEnv* env = GetEnv();
+    jstring jsid = toJString(env, serviceId);
+    env->CallStaticVoidMethod(g_cls, g_m_startDiscovery,
+            jsid, (jboolean)lowPower, strategy);
+    env->DeleteLocalRef(jsid);
+}
+
+NBC_EXPORT void NBC_StopDiscovery(void) {
+    GetEnv()->CallStaticVoidMethod(g_cls, g_m_stopDiscovery);
+}
+
+NBC_EXPORT void NBC_RequestConnection(const char* name, const char* endpointId)
+{
+    JNIEnv* env = GetEnv();
+    jstring jname = toJString(env, name);
+    jstring jid   = toJString(env, endpointId);
+
+    env->CallStaticVoidMethod(g_cls, g_m_requestConn, jname, jid);
+
+    env->DeleteLocalRef(jname);
+    env->DeleteLocalRef(jid);
+}
+
+NBC_EXPORT void NBC_SendBytes(const char* endpointId, const void* data, int len)
+{
+    JNIEnv* env = GetEnv();
+    jstring jid = toJString(env, endpointId);
+
+    jbyteArray arr = env->NewByteArray(len);
+    env->SetByteArrayRegion(arr, 0, len, reinterpret_cast<const jbyte*>(data));
+
+    env->CallStaticVoidMethod(g_cls, g_m_sendBytes, jid, arr);
+
+    env->DeleteLocalRef(jid);
+    env->DeleteLocalRef(arr);
+}
+
+NBC_EXPORT void NBC_AcceptConnection(const char* endpointId)
+{
+    JNIEnv* env = GetEnv();
+    jstring jid = toJString(env, endpointId);
+    env->CallStaticVoidMethod(g_cls, g_m_acceptConn, jid);
+    env->DeleteLocalRef(jid);
+}
+
+NBC_EXPORT void NBC_RejectConnection(const char* endpointId)
+{
+    JNIEnv* env = GetEnv();
+    jstring jid = toJString(env, endpointId);
+    env->CallStaticVoidMethod(g_cls, g_m_rejectConn, jid);
+    env->DeleteLocalRef(jid);
+}
+
+NBC_EXPORT void NBC_Disconnect(const char* endpointId)
+{
+    JNIEnv* env = GetEnv();
+    jstring jid = toJString(env, endpointId);
+    env->CallStaticVoidMethod(g_cls, g_m_disconnect, jid);
+    env->DeleteLocalRef(jid);
+}
+
+
+// ---------------------------------------------------------
+// Setters for atomics — exactly 1:1 with .h file
+// ---------------------------------------------------------
+NBC_EXPORT void NBC_SetOnPeerFound(OnPeerFound_cb cb) {
+    cb_peerFound.store(cb);
+}
+NBC_EXPORT void NBC_SetOnPeerLost(OnPeerLost_cb cb) {
+    cb_peerLost.store(cb);
+}
+NBC_EXPORT void NBC_SetOnConnectionInitiated(OnConnectionInitiated_cb cb) {
+    cb_connInit.store(cb);
+}
+NBC_EXPORT void NBC_SetOnConnectionEstablished(OnConnectionEstablished_cb cb) {
+    cb_connOk.store(cb);
+}
+NBC_EXPORT void NBC_SetOnConnectionDisconnected(OnConnectionDisconnected_cb cb) {
+    cb_connDisc.store(cb);
+}
+NBC_EXPORT void NBC_SetOnPayloadReceived(OnPayloadReceived_cb cb) {
+    cb_payload.store(cb);
+}
+
+} // extern "C"
