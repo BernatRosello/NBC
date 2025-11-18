@@ -21,7 +21,7 @@ static std::atomic<OnPeerLost_cb> g_onPeerLost{nullptr};
 static std::atomic<OnConnectionRequested_cb> g_onConnectionRequested{nullptr};
 static std::atomic<OnConnectionEstablished_cb> g_onConnectionEstablished{nullptr};
 static std::atomic<OnConnectionDisconnected_cb> g_onConnectionDisconnected{nullptr};
-static std::atomic<OnDataReceived_cb> g_onDataReceived{nullptr};
+static std::atomic<OnPayloadReceived_cb> g_onPayloadReceived{nullptr};
 static std::atomic<OnPayloadProgress_cb> g_onPayloadProgress{nullptr};
 
 // -------------------- helpers --------------------
@@ -167,9 +167,9 @@ NBC_EXPORT void NBC_SetOnConnectionDisconnected(OnConnectionDisconnected_cb cb)
 {
     g_onConnectionDisconnected.store(cb);
 }
-NBC_EXPORT void NBC_SetOnDataReceived(OnDataReceived_cb cb)
+NBC_EXPORT void NBC_SetOnPayloadReceived(OnPayloadReceived_cb cb)
 {
-    g_onDataReceived.store(cb);
+    g_onPayloadReceived.store(cb);
 }
 
 void NBC_SetOnPayloadProgress(OnPayloadProgress_cb cb) { g_onPayloadProgress.store(cb); }
@@ -284,10 +284,10 @@ extern "C"
     }
 
     JNIEXPORT void JNICALL
-    Java_com_bernatrosello_nearbybridge_NearbyBridge_nativeOnDataReceived(JNIEnv *env, jclass,
+    Java_com_bernatrosello_nearbybridge_NearbyBridge_nativeOnPayloadReceived(JNIEnv *env, jclass,
                                                                           jint endpointId, jbyteArray data)
     {
-        OnDataReceived_cb cb = g_onDataReceived.load();
+        OnPayloadReceived_cb cb = g_onPayloadReceived.load();
         if (!cb)
             return;
         jsize len = env->GetArrayLength(data);
