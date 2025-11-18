@@ -147,7 +147,7 @@ Java_com_bernatrosello_nearbybridge_NearbyBridge_nativeOnConnectionDisconnected(
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_bernatrosello_nearbybridge_NearbyBridge_nativeOnDataReceived(
+Java_com_bernatrosello_nearbybridge_NearbyBridge_nativeOnPayloadReceived(
         JNIEnv* env, jclass, jstring endpointId, jbyteArray data)
 {
     auto cb = cb_payload.load();
