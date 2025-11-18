@@ -24,7 +24,7 @@ typedef void (*OnPeerLost_cb)(int endpoint_id);
 typedef void (*OnConnectionRequested_cb)(int endpoint_id, const char* name);
 typedef void (*OnConnectionEstablished_cb)(int endpoint_id);
 typedef void (*OnConnectionDisconnected_cb)(int endpoint_id);
-typedef void (*OnDataReceived_cb)(int endpoint_id, const void* data, int len);
+typedef void (*OnPayloadReceived_cb)(int endpoint_id, const void* data, int len);
 typedef void (*OnPayloadProgress_cb)(int endpoint_id, long payload_id, long bytes, long total_bytes);
 
 // -----------------------------------------------------------------------------
