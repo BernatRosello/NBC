@@ -56,8 +56,7 @@ Cargo.lock
 
 # Bazel
 bazel-*
-third_party/absl
-third_party/protobuf
+third_party/*
 .gitignore
 
 # Native Library Plugin Binaries for Unity
